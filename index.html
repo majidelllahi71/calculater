@@ -464,6 +464,7 @@ html{scrollbar-gutter:stable}
   </div>
   <div class="top-actions">
     <div class="pill"><span style="width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block;box-shadow:0 0 8px #22c55e"></span> Ready</div>
+    <button class="icon-btn" id="soundBtn" title="Toggle sound">🔊</button>
     <div class="theme-wrap">
       <button class="icon-btn" id="themeBtn" title="Change theme">🎨</button>
       <div class="theme-pop" id="themePop">
@@ -632,6 +633,37 @@ let history = [];
 let justCalculated = false;
 let memoryValue = parseFloat(localStorage.getItem('calc_memory')||'0');
 if(isNaN(memoryValue)) memoryValue=0;
+// ── Sound effects (Web Audio API) ──
+let soundEnabled = localStorage.getItem('calc_sound') !== '0';
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+function playSound(kind){
+  if(!soundEnabled) return;
+  try{
+    ensureAudio();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    let freq=700, dur=0.08, type='sine';
+    if(kind==='num'){ freq=820; dur=0.07; type='sine'; }
+    else if(kind==='op'){ freq=520; dur=0.09; type='triangle'; }
+    else if(kind==='eq'){ freq=880; dur=0.18; type='sine'; }
+    else if(kind==='clear'){ freq=280; dur=0.14; type='sawtooth'; }
+    else if(kind==='back'){ freq=380; dur=0.08; type='square'; }
+    else if(kind==='sci'){ freq=640; dur=0.07; type='sine'; }
+    o.type=type; o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    g.gain.setValueAtTime(0.16, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+dur);
+    o.start(); o.stop(audioCtx.currentTime+dur);
+  }catch(e){}
+}
+function updateSoundBtn(){
+  const b=document.getElementById('soundBtn');
+  if(b) b.textContent = soundEnabled ? '🔊' : '🔇';
+}
 
 const exprEl = document.getElementById('expr');
 const resultEl = document.getElementById('result');
@@ -1011,13 +1043,38 @@ function toast(msg){
   setTimeout(()=>toastEl.classList.remove('show'),1800);
 }
 
+// sound helpers tied to actions
+function soundForInsert(t){
+  if(/^[0-9\.]$/.test(t)) return 'num';
+  if(['sin(','cos(','tan(','log(','ln(','√(','π','e','!','%','^','(',')','exp'].includes(t)) return 'sci';
+  return 'op';
+}
+function soundForAction(a){
+  if(a==='clear') return 'clear';
+  if(a==='back') return 'back';
+  if(a==='equals') return 'eq';
+  return 'op';
+}
+document.getElementById('soundBtn')?.addEventListener('click',()=>{
+  soundEnabled=!soundEnabled;
+  localStorage.setItem('calc_sound', soundEnabled?'1':'0');
+  updateSoundBtn();
+  toast(soundEnabled?'Sound on':'Sound off');
+  if(soundEnabled) playSound('num');
+});
+updateSoundBtn();
+
 // events
 document.querySelectorAll('[data-insert]').forEach(b=>{
-  b.addEventListener('click',()=>insertText(b.dataset.insert));
+  b.addEventListener('click',()=>{ playSound(soundForInsert(b.dataset.insert)); insertText(b.dataset.insert); });
 });
 document.querySelectorAll('[data-action]').forEach(b=>{
-  b.addEventListener('click',()=>handleAction(b.dataset.action));
+  b.addEventListener('click',()=>{ playSound(soundForAction(b.dataset.action)); handleAction(b.dataset.action); });
 });
+document.querySelectorAll('[data-mem]').forEach(b=>{
+  b.addEventListener('click',()=> playSound('op'));
+});
+document.getElementById('degBtn')?.addEventListener('click',()=> playSound('sci'));
 
 document.querySelectorAll('.mode-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
@@ -1089,27 +1146,27 @@ document.addEventListener('click',(e)=>{
   else document.querySelector('.theme-opt[data-theme=""]')?.classList.add('active');
 })();
 
-// keyboard
+// keyboard (with sound)
 document.addEventListener('keydown',e=>{
-  if(e.key>='0' && e.key<='9'){ insertText(e.key); e.preventDefault(); }
-  else if(e.key==='.'){ insertText('.'); e.preventDefault(); }
-  else if(e.key==='+'){ insertText('+'); e.preventDefault(); }
-  else if(e.key==='-'){ insertText('−'); e.preventDefault(); }
-  else if(e.key==='*'){ insertText('×'); e.preventDefault(); }
-  else if(e.key==='/'){ insertText('÷'); e.preventDefault(); }
-  else if(e.key==='('||e.key===')'){ insertText(e.key); e.preventDefault(); }
-  else if(e.key==='^'){ insertText('^'); e.preventDefault(); }
-  else if(e.key==='%'){ insertText('%'); e.preventDefault(); }
-  else if(e.key==='Enter' || e.key==='='){ handleAction('equals'); e.preventDefault(); }
-  else if(e.key==='Backspace'){ handleAction('back'); e.preventDefault(); }
-  else if(e.key==='Escape'){ handleAction('clear'); e.preventDefault(); }
+  if(e.key>='0' && e.key<='9'){ playSound('num'); insertText(e.key); e.preventDefault(); }
+  else if(e.key==='.'){ playSound('num'); insertText('.'); e.preventDefault(); }
+  else if(e.key==='+'){ playSound('op'); insertText('+'); e.preventDefault(); }
+  else if(e.key==='-'){ playSound('op'); insertText('−'); e.preventDefault(); }
+  else if(e.key==='*'){ playSound('op'); insertText('×'); e.preventDefault(); }
+  else if(e.key==='/'){ playSound('op'); insertText('÷'); e.preventDefault(); }
+  else if(e.key==='('||e.key===')'){ playSound('sci'); insertText(e.key); e.preventDefault(); }
+  else if(e.key==='^'){ playSound('sci'); insertText('^'); e.preventDefault(); }
+  else if(e.key==='%'){ playSound('sci'); insertText('%'); e.preventDefault(); }
+  else if(e.key==='Enter' || e.key==='='){ playSound('eq'); handleAction('equals'); e.preventDefault(); }
+  else if(e.key==='Backspace'){ playSound('back'); handleAction('back'); e.preventDefault(); }
+  else if(e.key==='Escape'){ playSound('clear'); handleAction('clear'); e.preventDefault(); }
 });
 
-document.querySelectorAll('[data-mem]').forEach(b=> b.addEventListener('click',()=> handleMemory(b.dataset.mem)));
+document.querySelectorAll('[data-mem]').forEach(b=> b.addEventListener('click',()=> { playSound('op'); handleMemory(b.dataset.mem); }));
 
 // keyboard shortcuts for memory: Ctrl+M (mc), Alt+M etc - simple: m/M
 document.addEventListener('keydown', e=>{
-  if(e.ctrlKey && e.key.toLowerCase()==='m'){ handleMemory('mplus'); e.preventDefault(); }
+  if(e.ctrlKey && e.key.toLowerCase()==='m'){ playSound('op'); handleMemory('mplus'); e.preventDefault(); }
 });
 
 updateMemoryUI();
