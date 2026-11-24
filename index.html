@@ -330,6 +330,32 @@ body::before{
 .right-col{display:flex;flex-direction:column;gap:16px;position:sticky;top:20px}
 @media(max-width:880px){.right-col{position:static}}
 
+/* collapsible panels — two toggle buttons */
+.panel-toggles{display:flex;gap:10px;margin-bottom:2px}
+.toggle-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:12px 14px;border-radius:14px;
+  background:var(--card);border:1px solid var(--border);
+  color:var(--text);font-size:13px;font-weight:700;cursor:pointer;
+  transition:.2s;box-shadow:var(--shadow);user-select:none;
+}
+.toggle-btn:hover{background:var(--card2);border-color:var(--accent);transform:translateY(-1px)}
+.toggle-btn.active{background:var(--eq);color:#fff;border-color:transparent;box-shadow:0 8px 20px var(--accent-glow)}
+.toggle-btn .badge{
+  background:rgba(255,255,255,0.22);color:#fff;
+  padding:2px 7px;border-radius:999px;font-size:11px;font-weight:800;min-width:20px;text-align:center;
+}
+.toggle-btn:not(.active) .badge{background:var(--accent);color:#fff}
+.collapsible-panel{display:none}
+.collapsible-panel.open{display:block;animation:panelIn .22s ease}
+@keyframes panelIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.panel-close{
+  background:var(--card2);border:1px solid var(--border);color:var(--muted);
+  width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+  cursor:pointer;font-size:14px;transition:.15s;
+}
+.panel-close:hover{background:var(--btn-hover);color:var(--text)}
+
 /* history */
 .history-card{
   background:var(--card); border:1px solid var(--border);
@@ -549,10 +575,17 @@ html{scrollbar-gutter:stable}
   </div>
 
   <div class="right-col">
-  <div class="history-card">
+  <div class="panel-toggles">
+    <button class="toggle-btn" id="toggleHistory" aria-expanded="false" aria-controls="historyPanel">🕘 Calculation History <span class="badge" id="histBadge">0</span></button>
+    <button class="toggle-btn" id="toggleConverter" aria-expanded="false" aria-controls="converterPanel">💱 Currency Converter</button>
+  </div>
+  <div class="history-card collapsible-panel" id="historyPanel">
     <div class="h-head">
       <h3>Calculation History</h3>
-      <button id="clearHist">Clear</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="clearHist">Clear</button>
+        <button class="panel-close" data-close="historyPanel" aria-label="Close history">✕</button>
+      </div>
     </div>
     <div class="hist-list" id="histList">
       <div class="empty">
@@ -575,10 +608,13 @@ html{scrollbar-gutter:stable}
     </div>
   </div>
 
-  <div class="converter-card" id="converterCard">
+  <div class="converter-card collapsible-panel" id="converterPanel">
     <div class="conv-head">
-      <h3>💱 Currency Converter</h3>
-      <span style="font-size:11px;color:var(--dim);font-weight:600;letter-spacing:0.04em">OFFLINE RATES • ECB BASE</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h3>💱 Currency Converter</h3>
+        <span style="font-size:11px;color:var(--dim);font-weight:600;letter-spacing:0.04em">OFFLINE RATES • ECB BASE</span>
+      </div>
+      <button class="panel-close" data-close="converterPanel" aria-label="Close converter">✕</button>
     </div>
     <div class="conv-grid">
       <div class="conv-row">
@@ -1168,6 +1204,46 @@ document.querySelectorAll('[data-mem]').forEach(b=> b.addEventListener('click',(
 document.addEventListener('keydown', e=>{
   if(e.ctrlKey && e.key.toLowerCase()==='m'){ playSound('op'); handleMemory('mplus'); e.preventDefault(); }
 });
+
+// collapsible panels: History & Currency toggles (closed by default)
+const historyPanel = document.getElementById('historyPanel');
+const converterPanel = document.getElementById('converterPanel');
+const toggleHistoryBtn = document.getElementById('toggleHistory');
+const toggleConverterBtn = document.getElementById('toggleConverter');
+const histBadge = document.getElementById('histBadge');
+function updateHistBadge(){ if(histBadge) histBadge.textContent = String(history.length); }
+function setPanel(panel, btn, open){
+  if(!panel || !btn) return;
+  panel.classList.toggle('open', open);
+  btn.classList.toggle('active', open);
+  btn.setAttribute('aria-expanded', open ? 'true':'false');
+  try{ if(open) playSound('sci'); else playSound('back'); }catch{}
+  if(open && navigator.vibrate) navigator.vibrate(10);
+}
+toggleHistoryBtn?.addEventListener('click', ()=>{
+  const willOpen = !historyPanel.classList.contains('open');
+  setPanel(historyPanel, toggleHistoryBtn, willOpen);
+  if(willOpen) historyPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+});
+toggleConverterBtn?.addEventListener('click', ()=>{
+  const willOpen = !converterPanel.classList.contains('open');
+  setPanel(converterPanel, toggleConverterBtn, willOpen);
+  if(willOpen) converterPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+});
+document.querySelectorAll('[data-close]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const id = b.dataset.close;
+    const panel = document.getElementById(id);
+    const btn = id==='historyPanel' ? toggleHistoryBtn : toggleConverterBtn;
+    setPanel(panel, btn, false);
+  });
+});
+// keep badge in sync with history
+const _origRenderHistory = renderHistory;
+renderHistory = function(){ _origRenderHistory(); updateHistBadge(); };
+const _origAddHistory = addHistory;
+addHistory = function(expr,res){ _origAddHistory(expr,res); updateHistBadge(); };
+updateHistBadge();
 
 updateMemoryUI();
 initConverter();
